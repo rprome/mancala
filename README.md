@@ -1,2 +1,2 @@
 # mancala
-first AI project using Huristic and minimax
+first 242 project using Huristic and minimax
