@@ -1,2 +1,2 @@
 # mancala
-insane ahh game
+first AI project using Huristic and minimax
