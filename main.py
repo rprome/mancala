@@ -209,9 +209,9 @@ def heuristic(p1_pits, p2_pits, p1_store, p2_store, perspective, turn):
     You can tweak the weights as desired.
     """
     # Weights for each factor (feel free to adjust)
-    W_STORE_DIFF = 1.0
-    W_EXTRA_MOVE = 3.0
-    W_BIG_STEAL = 2.0
+    W_STORE_DIFF = 5.0
+    W_EXTRA_MOVE = 1.0
+    W_BIG_STEAL = 3.0
 
     # 1) Store difference (from perspective)
     if perspective == '1':
