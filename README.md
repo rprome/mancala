@@ -1,5 +1,5 @@
-# mancala
-first 242 project using Heuristic and minimax
+# Mancala
+This project uses a heuristic minimax algorithm with alpha-beta pruning to win against a bot.
 
 Instructions:
 
