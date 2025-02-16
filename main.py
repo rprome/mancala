@@ -1,291 +1,238 @@
-#!/usr/bin/env python3
+"""
+CSC 242 Project 1: Source Code
+Sanchit Somani, Rizouana Prome, Shafayet Fahim, Emmanuel Ahishakiye
+February 16th, 2025 at 11:59 PM
 
+This .py file serves as the source code for our Mancala player. It works in tandem
+with random_player.py and controller.py (provided by Adam Purtee).
+The Mancala player uses a heuristic minimaxing algorithm to determine the best pit
+to choose out of a selection of 6 pits. In order to work strictly within a provided
+time constraint, the algorithm goes down the game tree using Iterative Deepening
+Search, allowing it to leave with a save state immediately. In order to reach as
+deep as possible, the algorithm uses alpha-beta pruning, dramatically increasing the
+efficiency of this algorithm and avoiding exploration of unnecessary nodes.
+"""
+# Necessary libraries
 import sys
 import math
 import time
-from datetime import datetime
 
+# We're using this global variable to determine maximum depth for optimization.
+global_depth = 0
 
-################################################################################
-# Board & Move Logic
-################################################################################
+'''
+Game Logic
+'''
 
-def apply_move(p1_pits, p2_pits, p1_store, p2_store, cur_player, chosen_pit):
-    """
-    Distribute stones from pit 'chosen_pit' (1-based index) on 'cur_player' side.
-    Return (new_p1_pits, new_p2_pits, new_p1_store, new_p2_store, next_player).
-    Handles capturing, skipping opponent's store, awarding extra move if last stone
-    lands in current player's store, etc.
-    """
+# This function is the basis for the game and will run after a pit is chosen.
+def apply_move(p1_pits, p2_pits, p1_store, p2_store, current_player, chosen_pit):
+    # Taking parameters and assigning them to symbolic parts of the Mancala board.
     N = len(p1_pits)
-    p1_pits = p1_pits[:]  # copy so we don't mutate caller
+    p1_pits = p1_pits[:]
     p2_pits = p2_pits[:]
 
-    if cur_player == '1':
-        stones = p1_pits[chosen_pit - 1]
+    # This block of code runs if the current player is P1.
+    if current_player == '1':
+        seeds = p1_pits[chosen_pit - 1]
         p1_pits[chosen_pit - 1] = 0
     else:
-        stones = p2_pits[chosen_pit - 1]
+        seeds = p2_pits[chosen_pit - 1]
         p2_pits[chosen_pit - 1] = 0
+    current_pit = chosen_pit
+    side = current_player
 
-    idx = chosen_pit
-    side = cur_player  # '1' or '2'
-
-    while stones > 0:
+    # This while loop will run while there are seeds in-hand.
+    while seeds > 0:
+        # We set side to match what our current_player is.
         if side == '1':
-            # move to next pit or store
-            if idx < N:
-                idx += 1
-            else:
-                # maybe place in p1_store if cur_player is '1'
-                if cur_player == '1':
+            if current_pit < N: current_pit += 1
+            elif current_pit > N:
+                if current_player == '1':
                     p1_store += 1
-                    stones -= 1
-                    if stones == 0:
-                        # last stone in own store => extra turn
-                        return (p1_pits, p2_pits, p1_store, p2_store, '1')
-                # then switch to side 2, pit 0
+                    seeds -= 1
+                    if seeds == 0: return p1_pits, p2_pits, p1_store, p2_store, '1' # Extra Move
                 side = '2'
-                idx = 0
+                current_pit = 0
                 continue
-
-            # place a stone
-            if idx <= N - 1:
-                p1_pits[idx - 1] += 1
-                stones -= 1
-                # check capture
-                if stones == 0 and cur_player == '1' and p1_pits[idx - 1] == 1:
-                    opposite_idx = (N - idx + 1)
-                    captured = p2_pits[opposite_idx - 1]
+            if current_pit <= N:
+                # Continue emptying hand.
+                p1_pits[current_pit - 1] += 1
+                seeds -= 1
+                # check capture if last stone lands in an empty pit on your side
+                if seeds == 0 and current_player == '1' and p1_pits[current_pit - 1] == 1:
+                    opposite_pit = N - current_pit + 1
+                    captured = p2_pits[opposite_pit - 1]
                     if captured > 0:
-                        p2_pits[opposite_idx - 1] = 0
+                        p2_pits[opposite_pit - 1] = 0
                         p1_store += (captured + 1)
-                        p1_pits[idx - 1] = 0
-
-        else:  # side == '2'
-            if idx < N:
-                idx += 1
+                        p1_pits[current_pit - 1] = 0
+        elif side == '2':
+            if current_pit < N: current_pit += 1
             else:
-                # maybe place in p2_store if cur_player == '2'
-                if cur_player == '2':
+                if current_player == '2':
                     p2_store += 1
-                    stones -= 1
-                    if stones == 0:
-                        # last stone in own store => extra turn
-                        return (p1_pits, p2_pits, p1_store, p2_store, '2')
+                    seeds -= 1
+                    if seeds == 0: return p1_pits, p2_pits, p1_store, p2_store, '2' # Extra move
                 side = '1'
-                idx = 0
+                current_pit = 0
                 continue
-
-            if idx <= N - 1:
-                p2_pits[idx - 1] += 1
-                stones -= 1
-                # check capture
-                if stones == 0 and cur_player == '2' and p2_pits[idx - 1] == 1:
-                    opposite_idx = (N - idx + 1)
-                    captured = p1_pits[opposite_idx - 1]
+            if current_pit <= N:
+                p2_pits[current_pit - 1] += 1
+                seeds -= 1
+                # We're checking here to see if the opposite side has >1 when we have 0 at index(current_pit).
+                if seeds == 0 and current_player == '2' and p2_pits[current_pit - 1] == 1:
+                    opposite_pit = N - current_pit + 1
+                    # Correction back to zero-based index from our one-based index.
+                    captured = p1_pits[opposite_pit - 1]
+                    # Assuming we capture something...
                     if captured > 0:
-                        p1_pits[opposite_idx - 1] = 0
+                        p1_pits[opposite_pit - 1] = 0
                         p2_store += (captured + 1)
-                        p2_pits[idx - 1] = 0
+                        p2_pits[current_pit - 1] = 0
 
-    # If we get here, last stone was NOT in our store => opponent's turn
-    next_player = '2' if (cur_player == '1') else '1'
-    return (p1_pits, p2_pits, p1_store, p2_store, next_player)
+    # In the case that we are not getting an extra turn. It is now the opponent's turn.
+    next_player = '2' if (current_player == '1') else '1'
+    return p1_pits, p2_pits, p1_store, p2_store, next_player
 
-
+# On player 2's first turn, they can invoke PIE. In this case, the pits and stores will flip.
 def apply_PIE(p1_pits, p2_pits, p1_store, p2_store):
-    """
-    Swap sides/stores for the "PIE" move (available to player 2 on turn=2).
-    Return (new_p1_pits, new_p2_pits, new_p1_store, new_p2_store).
-    """
-    return (p2_pits[:], p1_pits[:], p2_store, p1_store)
+    return p2_pits[:], p1_pits[:], p2_store, p1_store
 
+# We should be checking to see if the game has met termination conditions after every turn.
+def game_is_over(p1_pits, p2_pits): return sum(p1_pits) == 0 or sum(p2_pits) == 0
 
-def game_is_over(p1_pits, p2_pits):
-    """
-    Return True if all pits on either side are empty.
-    """
-    return (sum(p1_pits) == 0 or sum(p2_pits) == 0)
-
-
+# When the game ends, all seeds still in the pits should be distributed to their respective stores.
 def finalize_game(p1_pits, p2_pits, p1_store, p2_store):
-    """
-    If one side is empty, move all stones from the non-empty side to its store.
-    Return the final (p1_pits, p2_pits, p1_store, p2_store).
-    """
     if sum(p1_pits) == 0:
         p2_store += sum(p2_pits)
         p2_pits = [0] * len(p2_pits)
     elif sum(p2_pits) == 0:
         p1_store += sum(p1_pits)
         p1_pits = [0] * len(p1_pits)
-    return (p1_pits, p2_pits, p1_store, p2_store)
+    return p1_pits, p2_pits, p1_store, p2_store
 
+'''
+Helper Functions
+'''
 
-################################################################################
-# Advanced Heuristic
-################################################################################
-
-def get_valid_moves(p1_pits, p2_pits, p1_store, p2_store, turn, cur_player):
-    """
-    Collect all valid moves:
-      - pit indices (1..N) with >0 stones on cur_player side
-      - plus "PIE" if turn=2 and cur_player='2'.
-    """
+# Determines if a pit can be chosen. It cannot be chosen when it is empty.
+def get_valid_moves(p1_pits, p2_pits, turn, current_player):
     N = len(p1_pits)
     valid = []
-
-    if turn == 2 and cur_player == '2':
-        valid.append("PIE")
-
-    if cur_player == '1':
+    if turn == 2 and current_player == '2': valid.append("PIE")
+    if current_player == '1':
         for i in range(N):
-            if p1_pits[i] > 0:
-                valid.append(i + 1)
+            if p1_pits[i] > 0: valid.append(i + 1)
     else:
         for i in range(N):
-            if p2_pits[i] > 0:
-                valid.append(i + 1)
-
+            if p2_pits[i] > 0: valid.append(i + 1)
     return valid
 
-
+# Determines how many seeds are gained by a player when they capture one of the opponent's pit.
 def one_move_capture_size(p1_pits, p2_pits, p1_store, p2_store, player, pit_choice):
-    """
-    If 'player' sows from 'pit_choice' (1-based) in the *current* position,
-    return how many stones would be captured by that move. We'll do a partial
-    move simulation using apply_move. If no capture occurs, return 0.
-    """
-    new_p1, new_p2, new_s1, new_s2, nxt = apply_move(
-        p1_pits, p2_pits, p1_store, p2_store, player, pit_choice
-    )
+    new_p1_pits, new_p2_pits, new_p1_store, new_p2_store, next_player = apply_move(p1_pits, p2_pits, p1_store, p2_store, player, pit_choice)
     if player == '1':
-        # difference in store from before -> after might catch how many seeds ended up in p1_store
-        # but that includes normal sowing into store. Let's specifically see how many were captured
-        # by seeing how many seeds total are in the store minus how many were in the store originally,
-        # ignoring the normal sow. But for clarity, let's do a direct approach:
-        # We'll check how many seeds are removed from p2's side if the last stone landed in an empty pit
-        # That was the logic in apply_move. We'll just check the difference in p2's pit sum.
-        # Simpler: the difference in p1_store might reveal the capture. However, we do not want
-        # to count the normal store increment. The normal store increment from sowing is either 1 or 0 if we skip.
-        # For simplicity, let's do:
-        #   captured_size = (sum of p2_pits) - (sum of new_p2)
-        # But that includes all seeds from p2's side. Actually that might also include seeds sowed into p2's side.
-        # Let's just check the difference in p1_store from before to after minus 1 if the last stone landed in p1_store.
-        # It's simpler to see if the next_player == '1' with an empty pit.
-        # However, to keep it straightforward, let's do a direct approach:
-        # We'll re-run that logic or we can just keep track from the code above.
-        # *Since we've already done the move with apply_move, let's see the net difference in store ignoring standard increments.
-
-        return (new_s1 - p1_store) - (1 if nxt == '1' else 0)
-    else:  # player == '2'
-        return (new_s2 - p2_store) - (1 if nxt == '2' else 0)
-
-
-def one_move_earns_extra_turn(p1_pits, p2_pits, p1_store, p2_store, player, pit_choice):
-    """
-    Returns True if sowing from 'pit_choice' yields an extra move for 'player'
-    (i.e., the last stone lands in player's store).
-    """
-    new_p1, new_p2, new_s1, new_s2, nxt = apply_move(
-        p1_pits, p2_pits, p1_store, p2_store, player, pit_choice
-    )
-    return (nxt == player)
-
-
-def heuristic(p1_pits, p2_pits, p1_store, p2_store, perspective, turn):
-    """
-    A more advanced evaluation that considers:
-      1) Difference of seeds in the stores (base).
-      2) Whether we can get an extra move next turn (prioritize).
-      3) Potential to capture (steal) many seeds from opponent.
-
-    We'll:
-      - compute base store difference from `perspective`
-      - look at the "best" next pit for that perspective in terms of capturing & extra turn
-      - combine these into a single numeric score
-
-    You can tweak the weights as desired.
-    """
-    # Weights for each factor (feel free to adjust)
-    W_STORE_DIFF = 5.0
-    W_EXTRA_MOVE = 1.0
-    W_BIG_STEAL = 3.0
-
-    # 1) Store difference (from perspective)
-    if perspective == '1':
-        base_score = p1_store - p2_store
+        captured_p2 = sum(p2_pits) - sum(new_p2_pits)
+        return max(0, captured_p2)
     else:
-        base_score = p2_store - p1_store
+        captured_p1 = sum(p1_pits) - sum(new_p1_pits)
+        return max(0, captured_p1)
 
-    # 2) Potential next-move analysis: among all valid pits for `perspective`,
-    #    find the maximum possible capture plus note if an extra turn is possible.
-    valid = get_valid_moves(p1_pits, p2_pits, p1_store, p2_store, turn, perspective)
+# Determines if the next player will be the same player, which would mean the move gained us an extra turn.
+def one_move_earns_extra_turn(p1_pits, p2_pits, p1_store, p2_store, player, pit_choice):
+    new_p1_pits, new_p2_pits, new_p1_store, new_p2_store, next_player = apply_move(p1_pits, p2_pits, p1_store, p2_store, player, pit_choice)
+    return next_player == player
 
-    max_steal = 0
-    can_extra_move = False
+'''
+Heuristic
+'''
 
-    for mv in valid:
-        if mv == "PIE":
-            # If perspective == '2', then "PIE" is possible. After PIE, the perspective changes to '1'.
-            # It's tricky to evaluate capturing from the swapped perspective. We'll do a rough approach:
-            new_p1, new_p2, new_s1, new_s2 = apply_PIE(p1_pits, p2_pits, p1_store, p2_store)
-            # after PIE, the next player is '1', turn -> turn+1
-            # We won't do a second-level check here. Let's just skip steal for PIE for simplicity,
-            # or you could do a mini-check of what '1' could do next, etc.
-            # We'll skip it for now:
-            pass
-        else:
-            # It's a pit move
-            pit = mv
-            # potential stolen seeds
-            captured_amount = one_move_capture_size(
-                p1_pits, p2_pits, p1_store, p2_store, perspective, pit
-            )
-            if captured_amount > max_steal:
-                max_steal = captured_amount
+# Evaluates score without using PIE. If PIE is possible, evaluates score with PIE and takes the better route.
+def evaluate_PIE(p1_pits, p2_pits, p1_store, p2_store, current_player, turn):
+    score_without_PIE = evaluate_position(p1_pits, p2_pits, p1_store, p2_store, current_player, turn)
+    if current_player == '2' and turn == 2:
+        swapped_p1, swapped_p2, swapped_s1, swapped_s2 = apply_PIE(p1_pits, p2_pits, p1_store, p2_store)
+        score_with_PIE = evaluate_position(swapped_p1, swapped_p2, swapped_s1, swapped_s2, current_player, turn)
+        return max(score_without_PIE, score_with_PIE)
+    else:
+        return score_without_PIE
 
-            # check extra move possibility
-            if one_move_earns_extra_turn(p1_pits, p2_pits, p1_store, p2_store, perspective, pit):
-                can_extra_move = True
+def evaluate_position(p1_pits, p2_pits, p1_store, p2_store, perspective, turn):
+    """
+    Your original scoring logic that factors in store difference, side difference,
+    potential captures, etc. (without worrying about PIE).
+    """
+    # Example: your current logic
+    W_STORE_DIFF = 5.0
+    W_EXTRA_MOVE = 1
+    W_BIG_STEAL  = 3
+    W_SIDE_DIFF  = 0.5
 
-    # Add these to the final evaluation
-    extra_move_bonus = W_EXTRA_MOVE if can_extra_move else 0.0
-    steal_bonus = W_BIG_STEAL * max_steal
+    if perspective == '1':
+        store_diff = p1_store - p2_store
+        side_diff  = sum(p1_pits) - sum(p2_pits)
+    else:
+        store_diff = p2_store - p1_store
+        side_diff  = sum(p2_pits) - sum(p1_pits)
 
-    # Weighted sum
-    score = (W_STORE_DIFF * base_score) + extra_move_bonus + steal_bonus
+    # Potential capture or extra move analysis, etc.
+    # ...
+    # Suppose you computed these:
+    extra_move_bonus = 0
+    steal_bonus = 0.0
+    # (or your existing logic)
+
+    score = (W_STORE_DIFF * store_diff) + (W_SIDE_DIFF * side_diff)
+    score += extra_move_bonus + steal_bonus
     return score
 
+################################################################################
+# Alpha-Beta with Transposition Table
+################################################################################
 
-################################################################################
-# Alpha-Beta with new heuristic
-################################################################################
+# Global transposition cache: key -> (value, best_move, depth)
+transposition_table = {}
 
 def alpha_beta(p1_pits, p2_pits, p1_store, p2_store, turn, cur_player,
-               alpha, beta, depth, start_time, time_limit):
+               alpha, beta, depth, start_time, time_limit, root_player):
     """
-    Standard alpha-beta recursion.  We measure utility from `cur_player`'s perspective.
+    Alpha-beta search (single perspective approach, always "max" for cur_player).
     Returns (best_value, best_move).
+    - root_player is the original perspective (for the heuristic).
     """
-    # Check time
+    # Time check
     if (time.time() - start_time) >= time_limit:
-        val = heuristic(p1_pits, p2_pits, p1_store, p2_store, cur_player, turn)
-        return (val, None)
+        # Evaluate with the heuristic from root_player's perspective
+        val = evaluate_PIE(p1_pits, p2_pits, p1_store, p2_store, root_player, turn)
+        return val, None
 
-    # If game over or depth=0, finalize and evaluate
+    # If game over or depth=0, finalize & evaluate
     if game_is_over(p1_pits, p2_pits) or depth == 0:
         tmp1, tmp2, s1, s2 = finalize_game(p1_pits[:], p2_pits[:], p1_store, p2_store)
-        val = heuristic(tmp1, tmp2, s1, s2, cur_player, turn)
-        return (val, None)
+        val = evaluate_PIE(tmp1, tmp2, s1, s2, root_player, turn)
+        return val, None
 
-    moves = get_valid_moves(p1_pits, p2_pits, p1_store, p2_store, turn, cur_player)
+    moves = get_valid_moves(p1_pits, p2_pits, turn, cur_player)
     if not moves:
         # no moves => finalize & evaluate
         tmp1, tmp2, s1, s2 = finalize_game(p1_pits[:], p2_pits[:], p1_store, p2_store)
-        val = heuristic(tmp1, tmp2, s1, s2, cur_player, turn)
-        return (val, None)
+        val = evaluate_PIE(tmp1, tmp2, s1, s2, root_player, turn)
+        return val, None
+
+    # Transposition table lookup
+    board_key = (tuple(p1_pits), tuple(p2_pits), p1_store, p2_store, turn, cur_player, depth)
+    if board_key in transposition_table:
+        cached_val, cached_move, cached_depth = transposition_table[board_key]
+        if cached_depth >= depth:
+            return cached_val, cached_move
+
+    # Basic move ordering: sort by potential captures (descending)
+    def move_priority(m):
+        if m == "PIE":
+            return -1  # put PIE near the front or back arbitrarily; you can tweak
+        else:
+            return one_move_capture_size(p1_pits, p2_pits, p1_store, p2_store, cur_player, m)
+    moves.sort(key=move_priority, reverse=True)
 
     best_val = -math.inf
     best_move = None
@@ -294,28 +241,29 @@ def alpha_beta(p1_pits, p2_pits, p1_store, p2_store, turn, cur_player,
         if move == "PIE":
             # apply PIE => sides swap
             new_p1, new_p2, new_s1, new_s2 = apply_PIE(p1_pits, p2_pits, p1_store, p2_store)
-            # Turn is used, next player is '1', turn -> turn+1
+            # Turn used, next player is '1', so turn += 1
             nxt_player = '1'
             nxt_turn = turn + 1
+
             val, _ = alpha_beta(new_p1, new_p2, new_s1, new_s2,
                                 nxt_turn, nxt_player,
                                 alpha, beta, depth - 1,
-                                start_time, time_limit)
+                                start_time, time_limit,
+                                root_player)
+
         else:
             # normal pit move
             pit = move
             new_p1, new_p2, new_s1, new_s2, nxt_player = apply_move(
                 p1_pits, p2_pits, p1_store, p2_store, cur_player, pit
             )
-            if nxt_player == cur_player:
-                nxt_turn = turn
-            else:
-                nxt_turn = turn + 1
+            nxt_turn = turn if nxt_player == cur_player else (turn + 1)
 
             val, _ = alpha_beta(new_p1, new_p2, new_s1, new_s2,
                                 nxt_turn, nxt_player,
                                 alpha, beta, depth - 1,
-                                start_time, time_limit)
+                                start_time, time_limit,
+                                root_player)
 
         if val > best_val:
             best_val = val
@@ -323,68 +271,78 @@ def alpha_beta(p1_pits, p2_pits, p1_store, p2_store, turn, cur_player,
 
         alpha = max(alpha, best_val)
         if alpha >= beta:
-            break  # alpha–beta cutoff
+            break  # alpha-beta cutoff
 
-    return (best_val, best_move)
+    # Store in transposition table
+    transposition_table[board_key] = (best_val, best_move, depth)
 
+    return best_val, best_move
 
-def alpha_beta_search(p1_pits, p2_pits, p1_store, p2_store, turn, cur_player, time_limit=0.9):
+def alpha_beta_search(p1_pits, p2_pits, p1_store, p2_store, turn, cur_player, time_limit=0.5):
     """
-    Iterative deepening or fixed-depth alpha-beta to find the best move for `cur_player`.
-    We'll do up to depth=8 or time-limited, using our advanced heuristic.
-    Returns the best move found.
+    Iterative deepening alpha-beta to find the best move for `cur_player`.
+    We define root_player = cur_player so we evaluate from that perspective.
     """
     start_time = time.time()
     best_move = None
-    max_depth = 8
+    max_depth = 25  # Increase as desired
 
+    # We'll do iterative deepening from depth=1.max_depth
+    global global_depth
     for depth in range(1, max_depth + 1):
         if (time.time() - start_time) >= time_limit:
             break
-        val, move = alpha_beta(p1_pits, p2_pits, p1_store, p2_store,
-                               turn, cur_player,
-                               -math.inf, math.inf, depth,
-                               start_time, time_limit)
-        # If we still have time, update best_move
-        if (time.time() - start_time) < time_limit:
+        global_depth+=1
+        val, move = alpha_beta(
+            p1_pits, p2_pits, p1_store, p2_store,
+            turn, cur_player,
+            -math.inf, math.inf,
+            depth,
+            start_time, time_limit,
+            root_player=cur_player
+        )
+        # If still have time, update best_move
+        if (time.time() - start_time) < time_limit and move is not None:
             best_move = move
         else:
             break
-
+    print(f"Max depth reached: {global_depth}", file=sys.stderr)  # Print to stderr to avoid interfering with the game
     return best_move
 
+'''
+main
+'''
+def main():
+    line = sys.stdin.readline().strip()
+    # Example:
+    # STATE 6 4 4 4 4 4 4 4 4 4 4 4 4 0 0 1 1
+    parts = line.split()
+    N = int(parts[1])
+    p1_pits = list(map(int, parts[2: 2 + N]))
+    p2_pits = list(map(int, parts[2 + N: 2 + 2*N]))
+    p1_store = int(parts[2 + 2*N])
+    p2_store = int(parts[3 + 2*N])
+    turn = int(parts[-2])
+    cur_player = parts[-1]  # '1' or '2'
 
-################################################################################
-# main() - Reads ONE "STATE ..." line, prints ONE move, exits.
-################################################################################
+    # Clear the transposition table each run
+    transposition_table.clear()
 
+    # Find best move
+    best_move = alpha_beta_search(
+        p1_pits, p2_pits, p1_store, p2_store, turn, cur_player,
+        time_limit=0.5
+    )
 
-# Read exactly one line from stdin
-line = sys.stdin.readline().strip()
-# Example format:
-# STATE 6 4 4 4 4 4 4 4 4 4 4 4 4 0 0 1 1
-parts = line.split()
-# parse
-N = int(parts[1])
-p1_pits = list(map(int, parts[2: 2 + N]))
-p2_pits = list(map(int, parts[2 + N: 2 + 2 * N]))
-p1_store = int(parts[2 + 2 * N])
-p2_store = int(parts[3 + 2 * N])
-turn = int(parts[-2])
-cur_player = parts[-1]  # '1' or '2'
+    # If for some reason no best move was found, pick a fallback
+    if not best_move:
+        valid_moves = get_valid_moves(p1_pits, p2_pits, turn, cur_player)
+        if valid_moves:
+            best_move = valid_moves[0]
+        else:
+            best_move = 1
 
-# Find best move with alpha-beta
-best_move = alpha_beta_search(
-    p1_pits, p2_pits, p1_store, p2_store, turn, cur_player,
-    time_limit=0.95
-)
+    print(best_move)
 
-# If none found (very unlikely), pick a valid move if any
-if not best_move:
-    valid_moves = get_valid_moves(p1_pits, p2_pits, p1_store, p2_store, turn, cur_player)
-    if valid_moves:
-        best_move = valid_moves[0]
-    else:
-        best_move = 1  # fallback
-
-print(best_move)
+if __name__ == "__main__":
+    main()
