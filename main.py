@@ -208,7 +208,7 @@ def evaluate_PIE(p1_pits, p2_pits, p1_store, p2_store, current_player, turn):
     else: return score_without_PIE
 
 '''
-Alpha-Beta Pruning Functions
+Minimax + Alpha-Beta Pruning Function
 The following functions help us prune our game tree strictly to
 paths that have value for our program.
 '''
